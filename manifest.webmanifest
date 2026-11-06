@@ -1,0 +1,13 @@
+{
+  "name": "Auditoría SIC MIO",
+  "short_name": "Auditoría SIC",
+  "start_url": "./index.html",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "landscape",
+  "background_color": "#f2f2f2",
+  "theme_color": "#005ca9",
+  "icons": [
+    { "src": "icons/icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any maskable" }
+  ]
+}

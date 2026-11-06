@@ -1,0 +1,319 @@
+:root {
+    --brand-blue: #005ca9;
+    --brand-cyan: #009fe3;
+    --ok: #20b15d;
+    --no: #f81a34;
+    --warn: #e3b53e;
+    --bg: #f2f2f2;
+    --text-dark: #222;
+}
+
+* { box-sizing: border-box; }
+
+html, body {
+    margin: 0;
+    padding: 0;
+    height: 100%;
+    font-family: 'Segoe UI', Arial, sans-serif;
+    background: var(--bg);
+    color: var(--text-dark);
+}
+
+/* Pensado para uso en horizontal (landscape) en celular */
+.topbar {
+    background: var(--brand-blue);
+    color: white;
+    padding: 10px 12px;
+}
+
+.session-row {
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+    align-items: center;
+}
+
+.session-row select, .session-row button {
+    font-size: 1rem;
+    padding: 8px 10px;
+    border-radius: 6px;
+    border: none;
+}
+
+#toggleSessionBtn {
+    background: var(--ok);
+    color: white;
+    font-weight: bold;
+    min-height: 44px;
+}
+
+#toggleSessionBtn.activa {
+    background: var(--no);
+}
+
+.session-status {
+    font-size: 0.85rem;
+    margin-top: 4px;
+    min-height: 1.1em;
+}
+
+.alert-banner {
+    background: var(--warn);
+    color: var(--text-dark);
+    padding: 6px 10px;
+    border-radius: 6px;
+    margin-top: 6px;
+    font-size: 0.85rem;
+}
+
+.hidden { display: none !important; }
+
+.tabs {
+    display: flex;
+    gap: 6px;
+    margin-top: 8px;
+}
+
+.tab-btn {
+    flex: 1;
+    padding: 10px;
+    border: none;
+    border-radius: 6px 6px 0 0;
+    background: rgba(255,255,255,0.3);
+    color: white;
+    font-weight: bold;
+    min-height: 44px;
+}
+
+.tab-btn.active {
+    background: white;
+    color: var(--brand-blue);
+}
+
+main {
+    padding: 10px;
+}
+
+.tab-panel { display: none; }
+.tab-panel.active { display: block; }
+
+.cards {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+.card-ruta {
+    background: white;
+    border-radius: 8px;
+    padding: 10px 12px;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.15);
+}
+
+.card-header {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 8px;
+}
+
+.route-badge {
+    background: var(--brand-blue);
+    color: white;
+    font-weight: bold;
+    padding: 6px 10px;
+    border-radius: 6px;
+    min-width: 48px;
+    text-align: center;
+}
+
+.card-destino {
+    flex: 1;
+    font-weight: 600;
+}
+
+.btn-auditar {
+    background: var(--brand-cyan);
+    color: white;
+    border: none;
+    border-radius: 6px;
+    padding: 10px 14px;
+    font-weight: bold;
+    min-height: 44px;
+}
+
+.card-tiempos {
+    display: flex;
+    gap: 10px;
+}
+
+.tiempo-col {
+    flex: 1;
+    text-align: center;
+    border-left: 1px solid #eee;
+    padding: 4px 6px;
+}
+
+.tiempo-col label {
+    display: block;
+    font-size: 0.7rem;
+    color: #777;
+    text-transform: uppercase;
+}
+
+.tiempo-col span {
+    display: block;
+    font-size: 1.3rem;
+    font-weight: bold;
+}
+
+.tiempo-col small {
+    display: block;
+    font-size: 0.75rem;
+    color: #999;
+}
+
+.tiempo-col span.pasado { color: #e07a9b; }
+.tiempo-col span.futuro { color: var(--ok); }
+.tiempo-col span.llegando { color: var(--no); }
+.tiempo-col span.sin-dato { color: #bbb; }
+
+.muted {
+    color: #777;
+    font-style: italic;
+}
+
+.sessions-archive {
+    background: #fff9e6;
+    border: 1px solid var(--warn);
+    border-radius: 8px;
+    padding: 10px 12px;
+    margin-bottom: 12px;
+}
+
+.sessions-archive h3 {
+    margin: 0 0 8px;
+    font-size: 0.95rem;
+}
+
+.sesion-archivada {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px;
+    padding: 6px 0;
+    border-top: 1px solid #f0e2b0;
+    font-size: 0.85rem;
+}
+
+.sesion-archivada:first-of-type { border-top: none; }
+
+.sesion-archivada span { flex: 1 1 100%; }
+
+.sesion-archivada.descargada { opacity: 0.6; }
+
+.btn-secundario {
+    background: #ddd;
+    border: none;
+    border-radius: 6px;
+    padding: 8px 12px;
+    margin-bottom: 10px;
+    min-height: 40px;
+}
+
+.audit-buttons {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    margin-top: 12px;
+}
+
+.btn-grande {
+    min-height: 56px;
+    font-size: 1.1rem;
+    font-weight: bold;
+    border: none;
+    border-radius: 8px;
+    color: white;
+    background: var(--brand-blue);
+}
+
+.identidad-row {
+    display: flex;
+    gap: 10px;
+}
+
+.identidad-row .btn-grande { flex: 1; }
+
+.btn-ok { background: var(--ok); }
+.btn-no { background: var(--no); }
+
+.bus-fisico-wrap {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    align-items: center;
+    background: #fff3f3;
+    padding: 10px;
+    border-radius: 8px;
+}
+
+.bus-fisico-wrap input {
+    flex: 1;
+    min-width: 140px;
+    font-size: 1.1rem;
+    padding: 10px;
+    border-radius: 6px;
+    border: 1px solid #ccc;
+}
+
+.bus-fisico-wrap button {
+    min-height: 44px;
+    padding: 0 16px;
+    border: none;
+    border-radius: 6px;
+    background: var(--brand-blue);
+    color: white;
+    font-weight: bold;
+}
+
+dialog {
+    border: none;
+    border-radius: 10px;
+    padding: 20px;
+    max-width: 90vw;
+}
+
+dialog label, dialog input {
+    display: block;
+    width: 100%;
+    margin-top: 8px;
+}
+
+dialog input {
+    font-size: 1.1rem;
+    padding: 10px;
+    border-radius: 6px;
+    border: 1px solid #ccc;
+}
+
+dialog menu {
+    display: flex;
+    justify-content: flex-end;
+    gap: 10px;
+    margin-top: 16px;
+    padding: 0;
+}
+
+dialog menu button {
+    min-height: 44px;
+    padding: 0 16px;
+    border-radius: 6px;
+    border: none;
+    font-weight: bold;
+}
+
+dialog menu button[value="default"] {
+    background: var(--ok);
+    color: white;
+}
