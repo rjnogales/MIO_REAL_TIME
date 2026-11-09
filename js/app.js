@@ -167,7 +167,7 @@ function renderizarSesionesArchivadas() {
 
 // --- reloj sincronizado (encabezado) ---
 // Muestra la hora corregida al reloj del sistema (ver js/reloj.js) y, si ya hay datos para
-// calcularlo, el desfase detectado contra el reloj del celular -- así el auditor ve de un
+// calcularlo, el desfase detectado contra el reloj del dispositivo -- así el auditor ve de un
 // vistazo si su dispositivo está confiable o no.
 function actualizarRelojUI() {
     const ahora = new Date(ahoraSincronizado());
@@ -180,14 +180,14 @@ function actualizarRelojUI() {
     if (offset !== null) {
         const segundos = Math.round(offset / 1000);
         if (Math.abs(segundos) < 2) {
-            desfase = 'reloj del celular sin desfase significativo';
+            desfase = 'reloj del dispositivo sin desfase significativo';
         } else {
             const signo = segundos > 0 ? 'atrasado' : 'adelantado';
             const abs = Math.abs(segundos);
             const mins = Math.floor(abs / 60);
             const secs = abs % 60;
             const texto = mins > 0 ? `${mins} min ${secs} s` : `${secs} s`;
-            desfase = `celular ${signo} ${texto} respecto al sistema`;
+            desfase = `dispositivo ${signo} ${texto} respecto al sistema`;
             alerta = abs >= 60;
         }
     }
@@ -211,7 +211,7 @@ function detenerPolling() {
 
 function filaBase(now) {
     return {
-        timestamp_captura: new Date(now).toISOString(),
+        timestamp_captura: formatearTimestampLocal(now),
         estacion: session.meta.estacion,
         plataforma: paradasPlanas[currentStopId] || '',
         stop_id: currentStopId,
@@ -241,8 +241,8 @@ function filaDesdeMensaje(m, now) {
         fila.trip_id = m[6] ?? '';
         fila.vehicle_raw = m[5] ?? '';
         fila.vehicle_mc = vehiculo.numero ?? '';
-        fila.estimated_time = m[8] ?? '';
-        fila.planned_departure_raw = m[7] ?? '';
+        fila.estimated_time = formatearEpochSiExiste(m[8]);
+        fila.planned_departure_raw = formatearEpochSiExiste(m[7]);
         if (auditSeleccion) {
             const mismoTrip = auditSeleccion.tripId !== null && String(auditSeleccion.tripId) === String(m[6]);
             const mismoFallback = auditSeleccion.tripId === null && auditSeleccion.route === m[2] && auditSeleccion.destination === m[4];
@@ -275,7 +275,15 @@ async function pollTick() {
     if (serverTime !== null) actualizarOffsetReloj(serverTime, localAntes, localDespues);
     const now = ahoraSincronizado();
 
-    const filasCrudas = messages.map(m => filaDesdeMensaje(m, now));
+    // Los mensajes tipo 5-9 son metadatos auxiliares que ni el propio kiosco oficial usa para
+    // nada (ver acta, sección 2) y que nunca se lograron descifrar -- solo repiten trip_id/stop_id
+    // sin aportar nada a la auditoría. Se dejaron de registrar el 2026-11-09 porque eran el 74%
+    // de las filas del CSV (ver acta, sección 13) sin ningún valor para comparar hora predicha vs.
+    // real ni identidad del bus. Los tipos 0 (plataforma), 1 (predicción), 2 (alerta) y 4 (reloj
+    // del servidor) sí se siguen guardando siempre, igual que cualquier mensaje no reconocido
+    // (criterio: solo se descarta lo que ya está identificado y confirmado como irrelevante).
+    const mensajesParaCsv = messages.filter(m => !(Array.isArray(m) && m[0] >= 5 && m[0] <= 9));
+    const filasCrudas = mensajesParaCsv.map(m => filaDesdeMensaje(m, now));
     agregarFilas(session, filasCrudas);
 
     const mensajesValidos = messages.filter(m => Array.isArray(m));
@@ -377,7 +385,7 @@ function actualizarResumenMarcas() {
     const resumenEl = document.getElementById('auditMarcasResumen');
     if (!resumenEl || !auditSeleccion) return;
     const partes = [];
-    if (auditSeleccion.marcada.hora) partes.push('Hora marcada: ' + new Date(auditSeleccion.marcada.hora).toLocaleTimeString());
+    if (auditSeleccion.marcada.hora) partes.push('Hora marcada: ' + auditSeleccion.marcada.hora.slice(11, 19));
     if (auditSeleccion.marcada.identidad) partes.push('Identidad: ' + auditSeleccion.marcada.identidad);
     resumenEl.textContent = partes.length ? partes.join(' · ') : 'Aún sin marcas para este bus.';
 }
