@@ -57,6 +57,18 @@ html, body {
     min-height: 1.1em;
 }
 
+.reloj-estado {
+    font-size: 0.8rem;
+    margin-top: 2px;
+    opacity: 0.9;
+}
+
+.reloj-estado.alerta {
+    color: var(--warn);
+    font-weight: bold;
+    opacity: 1;
+}
+
 .alert-banner {
     background: var(--warn);
     color: var(--text-dark);

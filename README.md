@@ -36,6 +36,7 @@ CODE/
   data/paradas.js          snapshot embebido del catálogo de paradas (269 plataformas), ver nota CORS abajo
   js/
     vehiculos.js           tabla de resolución de número físico de bus (MC XXXXX), copiada del kiosco oficial
+    reloj.js                sincronización del reloj del dispositivo contra el reloj del servidor del SIC (ver nota abajo)
     api.js                 fetch a la API del SIC + carga del catálogo de paradas (snapshot + intento de refresco en vivo)
     logic.js                agrupación Última Atención / Próxima Llegada / Siguiente (portado del kiosco oficial)
     storage.js              persistencia de la sesión en localStorage (sobrevive a recarga/cierre accidental)
@@ -51,4 +52,5 @@ CODE/
 - **A diferencia del kiosco oficial**, esta app **nunca descarta** una predicción por no tener ETA o vehículo resuelto — todo se registra en el CSV (ver acta, decisión "cargar todo lo que se pueda").
 - **Mapeo de campos pendiente de confirmar en campo**: `direction_id` (arr[3]) y `trip_id` (arr[6]) del mensaje tipo 1 son inferencias razonables, no confirmadas contra documentación oficial — ver comentarios en `logic.js` y la sección de pendientes del acta.
 - Una sesión queda ligada a una sola estación (el selector de estación se bloquea mientras hay sesión activa), pero sí se puede cambiar de plataforma dentro de ella.
+- **Reloj sincronizado con el sistema**: el reloj del celular puede estar desfasado varios minutos frente al reloj real del SIC (detectado en campo, hasta 4 min). La API manda su propia hora de servidor en cada respuesta (mensaje tipo 4, `[4,"2.0",timestampMs]`); `js/reloj.js` calcula el desfase contra el reloj local en cada ciclo de polling y lo aplica a **todo** lo que la app registra o compara (CSV, marcas del auditor, estado Próxima Llegada/LLEGANDO). El encabezado muestra la hora corregida y el desfase detectado frente al celular — ver acta, sección 12.
 - **Descarga diferida del CSV**: al apagar la captura (botón "Detener captura") la sesión NO se descarga en ese momento, solo se archiva en `localStorage` (clave `sic_audit_sessions_archive_v1`, ver `js/storage.js`). El auditor puede seguir encadenando sesiones el resto del día; todas quedan listadas en un recuadro amarillo "Sesiones guardadas en este dispositivo" (arriba de las tarjetas, pestaña Monitoreo), cada una con botón de descarga individual y botón de eliminar (pensado para usarse al final del día, cuando ya se guardó el CSV en el computador).

@@ -16,6 +16,7 @@ const estacionSelect = document.getElementById('estacionSelect');
 const plataformaSelect = document.getElementById('plataformaSelect');
 const toggleSessionBtn = document.getElementById('toggleSessionBtn');
 const sessionStatusEl = document.getElementById('sessionStatus');
+const relojEstadoEl = document.getElementById('relojEstado');
 const alertBannerEl = document.getElementById('alertBanner');
 const cardsEl = document.getElementById('cards');
 const sessionsArchiveEl = document.getElementById('sessionsArchive');
@@ -164,6 +165,38 @@ function renderizarSesionesArchivadas() {
     });
 }
 
+// --- reloj sincronizado (encabezado) ---
+// Muestra la hora corregida al reloj del sistema (ver js/reloj.js) y, si ya hay datos para
+// calcularlo, el desfase detectado contra el reloj del celular -- así el auditor ve de un
+// vistazo si su dispositivo está confiable o no.
+function actualizarRelojUI() {
+    const ahora = new Date(ahoraSincronizado());
+    const fecha = ahora.toLocaleDateString();
+    const hora = ahora.toLocaleTimeString();
+    const offset = offsetRelojActual();
+
+    let desfase = 'sincronizando con el sistema…';
+    let alerta = false;
+    if (offset !== null) {
+        const segundos = Math.round(offset / 1000);
+        if (Math.abs(segundos) < 2) {
+            desfase = 'reloj del celular sin desfase significativo';
+        } else {
+            const signo = segundos > 0 ? 'atrasado' : 'adelantado';
+            const abs = Math.abs(segundos);
+            const mins = Math.floor(abs / 60);
+            const secs = abs % 60;
+            const texto = mins > 0 ? `${mins} min ${secs} s` : `${secs} s`;
+            desfase = `celular ${signo} ${texto} respecto al sistema`;
+            alerta = abs >= 60;
+        }
+    }
+    relojEstadoEl.textContent = `${fecha} ${hora} (hora del sistema) · ${desfase}`;
+    relojEstadoEl.classList.toggle('alerta', alerta);
+}
+
+setInterval(actualizarRelojUI, 1000);
+
 // --- polling del SIC ---
 function iniciarPolling() {
     detenerPolling();
@@ -225,17 +258,22 @@ function filaDesdeMensaje(m, now) {
 
 async function pollTick() {
     if (!session || !currentStopId) return;
-    const now = Date.now();
+    const localAntes = Date.now();
     let messages;
     try {
         messages = await fetchStopMessages(currentStopId);
     } catch (e) {
-        const filaError = filaBase(now);
+        const filaError = filaBase(ahoraSincronizado());
         filaError.tipo_mensaje = 'ERROR';
         filaError.raw_mensaje = String((e && e.message) || e);
         agregarFilas(session, [filaError]);
         return; // se deja el hueco, sin reintento inmediato
     }
+    const localDespues = Date.now();
+
+    const serverTime = extraerTimestampServidor(messages);
+    if (serverTime !== null) actualizarOffsetReloj(serverTime, localAntes, localDespues);
+    const now = ahoraSincronizado();
 
     const filasCrudas = messages.map(m => filaDesdeMensaje(m, now));
     agregarFilas(session, filasCrudas);
@@ -256,7 +294,7 @@ function renderizarCards(rows) {
         cardsEl.innerHTML = '<p class="muted">Sin predicciones activas en esta plataforma por ahora.</p>';
         return;
     }
-    const now = Date.now();
+    const now = ahoraSincronizado();
     cardsEl.innerHTML = rows.map(r => {
         const last = formatearTiempo(r.lastDeparted?.eta ?? null, now, true);
         const next = formatearTiempo(r.nextArrival?.eta ?? null, now, false);
@@ -345,7 +383,7 @@ function actualizarResumenMarcas() {
 }
 
 function construirFilaAuditoria(tipo) {
-    const now = Date.now();
+    const now = ahoraSincronizado();
     const fila = filaBase(now);
     fila.tipo_mensaje = tipo;
     fila.line_name = auditSeleccion.route;
@@ -397,6 +435,7 @@ btnGuardarBusFisico.addEventListener('click', () => {
 
 // --- arranque ---
 async function init() {
+    actualizarRelojUI();
     try {
         paradasPlanas = await loadParadas();
     } catch (e) {

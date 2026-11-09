@@ -1,6 +1,6 @@
 // Service worker mínimo: solo cachea el "shell" estático de la app (para que abra
 // sin conexión), nunca las respuestas del SIC -- esas siempre deben ser en vivo.
-const CACHE_NAME = 'sic-audit-shell-v1';
+const CACHE_NAME = 'sic-audit-shell-v2';
 const SHELL_FILES = [
     './',
     './index.html',
@@ -8,6 +8,7 @@ const SHELL_FILES = [
     './css/style.css',
     './js/vehiculos.js',
     './data/paradas.js',
+    './js/reloj.js',
     './js/api.js',
     './js/logic.js',
     './js/storage.js',

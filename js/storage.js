@@ -12,7 +12,7 @@ function iniciarSesion({ estacion, auditor }) {
             id: `${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
             estacion,
             auditor,
-            startTime: Date.now()
+            startTime: ahoraSincronizado()
         },
         rows: [],
         caches: { historyCache: {}, approachingCache: {} }
@@ -54,7 +54,7 @@ function archivarSesionActiva() {
     const raw = localStorage.getItem(SESSION_KEY);
     if (!raw) return null;
     const session = JSON.parse(raw);
-    session.meta.endTime = Date.now();
+    session.meta.endTime = ahoraSincronizado();
     session.meta.descargada = false;
     const archivo = listarSesionesArchivadas();
     archivo.push(session);

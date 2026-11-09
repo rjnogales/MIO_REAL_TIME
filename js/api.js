@@ -28,6 +28,13 @@ async function fetchStopMessages(stopId) {
         });
 }
 
+// Extrae el timestamp de servidor del mensaje tipo 4 ([4, version, timestampMs]) que la API
+// manda al inicio de cada respuesta. Ver js/reloj.js para cómo se usa.
+function extraerTimestampServidor(messages) {
+    const m4 = messages.find(m => Array.isArray(m) && m[0] === 4 && typeof m[2] === 'number');
+    return m4 ? m4[2] : null;
+}
+
 // Catálogo de paradas: StopId -> "Nombre Estacion Plataforma" (ej. "Alamos A1").
 // www.utryt.com.co NO envía cabecera Access-Control-Allow-Origin en este endpoint (confirmado
 // con curl -D-), así que un fetch() desde el navegador falla por CORS en cuanto la app se sirve
