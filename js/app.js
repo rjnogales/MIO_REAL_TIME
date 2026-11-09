@@ -9,6 +9,9 @@ let session = null;
 let pollTimer = null;
 let currentStopId = null;
 let currentPlatformRows = [];
+// Caches de Última Atención/Próxima Llegada para cuando se está mirando Monitoreo sin una
+// sesión de captura activa (ver pollTick) -- cuando hay sesión, se usan las de session.caches.
+let monitorCaches = { historyCache: {}, approachingCache: {} };
 let auditSeleccion = null; // { route, destination, tripId, vehicleMc, marcada:{} }
 
 // --- referencias DOM ---
@@ -61,11 +64,12 @@ function poblarPlataformas(estacionNombre) {
     plataformaSelect.innerHTML = lista.map(p => `<option value="${p.stopId}">${p.plataforma || p.nombreCompleto}</option>`).join('');
     currentStopId = lista.length ? lista[0].stopId : null;
     cardsEl.innerHTML = '';
+    monitorCaches = { historyCache: {}, approachingCache: {} };
     if (session) {
         session.meta.lastStopId = currentStopId;
         guardarSesion(session);
-        iniciarPolling();
     }
+    if (currentStopId) iniciarPolling();
 }
 
 function seleccionarEnSelects(stopId) {
@@ -82,11 +86,12 @@ estacionSelect.addEventListener('change', () => poblarPlataformas(estacionSelect
 plataformaSelect.addEventListener('change', () => {
     currentStopId = plataformaSelect.value;
     cardsEl.innerHTML = '';
+    monitorCaches = { historyCache: {}, approachingCache: {} };
     if (session) {
         session.meta.lastStopId = currentStopId;
         guardarSesion(session);
-        iniciarPolling();
     }
+    if (currentStopId) iniciarPolling();
 });
 
 // --- sesión: encendido / apagado ---
@@ -99,7 +104,9 @@ function actualizarUIBotonSesion(activa) {
 
 toggleSessionBtn.addEventListener('click', () => {
     if (session) {
-        detenerPolling();
+        // El polling NO se detiene: Monitoreo sigue en vivo (igual que la pantalla física)
+        // aunque se apague la grabación -- solo se deja de escribir en el CSV desde aquí.
+        monitorCaches = session.caches;
         archivarSesionActiva();
         session = null;
         actualizarUIBotonSesion(false);
@@ -256,17 +263,23 @@ function filaDesdeMensaje(m, now) {
     return fila;
 }
 
+// Consulta el SIC y sincroniza el reloj SIEMPRE que haya una plataforma seleccionada, haya o
+// no sesión de captura activa -- Monitoreo (y el reloj del encabezado) deben verse en vivo todo
+// el tiempo, igual que la pantalla física del kiosco. El botón de captura solo controla si,
+// además de mostrarse, esos datos también se graban en el CSV de la sesión.
 async function pollTick() {
-    if (!session || !currentStopId) return;
+    if (!currentStopId) return;
     const localAntes = Date.now();
     let messages;
     try {
         messages = await fetchStopMessages(currentStopId);
     } catch (e) {
-        const filaError = filaBase(ahoraSincronizado());
-        filaError.tipo_mensaje = 'ERROR';
-        filaError.raw_mensaje = String((e && e.message) || e);
-        agregarFilas(session, [filaError]);
+        if (session) {
+            const filaError = filaBase(ahoraSincronizado());
+            filaError.tipo_mensaje = 'ERROR';
+            filaError.raw_mensaje = String((e && e.message) || e);
+            agregarFilas(session, [filaError]);
+        }
         return; // se deja el hueco, sin reintento inmediato
     }
     const localDespues = Date.now();
@@ -275,21 +288,25 @@ async function pollTick() {
     if (serverTime !== null) actualizarOffsetReloj(serverTime, localAntes, localDespues);
     const now = ahoraSincronizado();
 
-    // Los mensajes tipo 5-9 son metadatos auxiliares que ni el propio kiosco oficial usa para
-    // nada (ver acta, sección 2) y que nunca se lograron descifrar -- solo repiten trip_id/stop_id
-    // sin aportar nada a la auditoría. Se dejaron de registrar el 2026-11-09 porque eran el 74%
-    // de las filas del CSV (ver acta, sección 13) sin ningún valor para comparar hora predicha vs.
-    // real ni identidad del bus. Los tipos 0 (plataforma), 1 (predicción), 2 (alerta) y 4 (reloj
-    // del servidor) sí se siguen guardando siempre, igual que cualquier mensaje no reconocido
-    // (criterio: solo se descarta lo que ya está identificado y confirmado como irrelevante).
-    const mensajesParaCsv = messages.filter(m => !(Array.isArray(m) && m[0] >= 5 && m[0] <= 9));
-    const filasCrudas = mensajesParaCsv.map(m => filaDesdeMensaje(m, now));
-    agregarFilas(session, filasCrudas);
+    if (session) {
+        // Los mensajes tipo 5-9 son metadatos auxiliares que ni el propio kiosco oficial usa
+        // para nada (ver acta, sección 2) y que nunca se lograron descifrar -- solo repiten
+        // trip_id/stop_id sin aportar nada a la auditoría. Se dejaron de registrar el 2026-11-09
+        // porque eran el 74% de las filas del CSV (ver acta, sección 13) sin ningún valor para
+        // comparar hora predicha vs. real ni identidad del bus. Los tipos 0 (plataforma),
+        // 1 (predicción), 2 (alerta) y 4 (reloj del servidor) sí se siguen guardando siempre,
+        // igual que cualquier mensaje no reconocido (criterio: solo se descarta lo que ya está
+        // identificado y confirmado como irrelevante).
+        const mensajesParaCsv = messages.filter(m => !(Array.isArray(m) && m[0] >= 5 && m[0] <= 9));
+        const filasCrudas = mensajesParaCsv.map(m => filaDesdeMensaje(m, now));
+        agregarFilas(session, filasCrudas);
+    }
 
     const mensajesValidos = messages.filter(m => Array.isArray(m));
     const { predicciones, alertas } = extraerPredicciones(mensajesValidos);
-    currentPlatformRows = agruparPrediccionesPorRuta(predicciones, currentStopId, now, session.caches);
-    guardarSesion(session);
+    const caches = session ? session.caches : monitorCaches;
+    currentPlatformRows = agruparPrediccionesPorRuta(predicciones, currentStopId, now, caches);
+    if (session) guardarSesion(session);
 
     renderizarCards(currentPlatformRows);
     renderizarAlertas(alertas);
@@ -335,6 +352,10 @@ function renderizarAlertas(alertas) {
 
 // --- pestaña de auditoría ---
 function seleccionarParaAuditar(route, destination) {
+    if (!session) {
+        alert('Primero tenés que iniciar la captura (botón del encabezado) para poder auditar un bus.');
+        return;
+    }
     const fila = currentPlatformRows.find(r => r.route === route && r.destination === destination);
     if (!fila || !fila.nextArrival) {
         alert('No hay una próxima llegada activa para esta ruta en este momento.');
