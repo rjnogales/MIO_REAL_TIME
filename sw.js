@@ -1,6 +1,13 @@
 // Service worker mínimo: solo cachea el "shell" estático de la app (para que abra
 // sin conexión), nunca las respuestas del SIC -- esas siempre deben ser en vivo.
-const CACHE_NAME = 'sic-audit-shell-v2';
+//
+// IMPORTANTE: el navegador solo revisa si ESTE ARCHIVO cambió (byte a byte) para decidir si
+// hay una versión nueva que instalar. Si se edita cualquier archivo de SHELL_FILES (css, js,
+// index.html) y NO se sube el número de CACHE_NAME en el mismo push, el navegador no detecta
+// nada nuevo y sigue sirviendo el shell viejo cacheado -- ninguna cantidad de recargas lo
+// arregla, hay que subir este número. (Pasó el 2026-11-09: dos despliegues seguidos sin subirlo
+// dejaron el reloj/monitoreo nuevos sin efecto para quien ya había abierto la app antes.)
+const CACHE_NAME = 'sic-audit-shell-v3';
 const SHELL_FILES = [
     './',
     './index.html',
