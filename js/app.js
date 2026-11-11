@@ -431,10 +431,23 @@ function seleccionarParaAuditar(route, destination) {
 function actualizarPrediccionAuditoria() {
     if (!auditSeleccion) return;
     const fila = currentPlatformRows.find(r => r.route === auditSeleccion.route && r.destination === auditSeleccion.destination);
-    if (fila && fila.nextArrival) {
-        auditSeleccion.vehicleMc = fila.nextArrival.vehicleMc;
-        if (auditSeleccion.tripId === null) auditSeleccion.tripId = fila.nextArrival.tripId;
+    if (!fila) return;
+    // Buscar el MISMO viaje (tripId) entre los tres slots -- nunca asumir que "Próxima Llegada"
+    // sigue siendo el bus auditado: en cuanto su ETA pasa, el sistema lo mueve a "Última
+    // Atención" y promueve el siguiente bus a "Próxima Llegada". Si no se valida el tripId,
+    // la pantalla (y el CSV) terminan mostrando el bus SIGUIENTE justo cuando el auditado
+    // llega tarde -- que es el caso que esta auditoría más necesita medir bien.
+    const candidatos = [fila.nextArrival, fila.lastDeparted, fila.following];
+    const match = candidatos.find(c => c && (
+        auditSeleccion.tripId !== null
+            ? String(c.tripId) === String(auditSeleccion.tripId)
+            : c.route === auditSeleccion.route && c.destination === auditSeleccion.destination
+    ));
+    if (match) {
+        auditSeleccion.vehicleMc = match.vehicleMc;
+        if (auditSeleccion.tripId === null) auditSeleccion.tripId = match.tripId;
     }
+    // si no hay match, se deja el último vehicleMc conocido -- congelado, no se pisa con otro bus
     renderizarAuditoria();
 }
 
