@@ -13,6 +13,8 @@ let currentPlatformRows = [];
 // sesión de captura activa (ver pollTick) -- cuando hay sesión, se usan las de session.caches.
 let monitorCaches = { historyCache: {}, approachingCache: {} };
 let auditSeleccion = null; // { route, destination, tripId, vehicleMc, marcada:{} }
+let ultimoPollExitosoMs = null; // Date.now() del último fetchStopMessages que sí respondió -- ver actualizarPollEstadoUI
+let wakeLock = null; // sentinel del Screen Wake Lock, solo mientras hay sesión de captura activa
 
 // --- referencias DOM ---
 const estacionSelect = document.getElementById('estacionSelect');
@@ -20,6 +22,7 @@ const plataformaSelect = document.getElementById('plataformaSelect');
 const toggleSessionBtn = document.getElementById('toggleSessionBtn');
 const sessionStatusEl = document.getElementById('sessionStatus');
 const relojEstadoEl = document.getElementById('relojEstado');
+const pollEstadoEl = document.getElementById('pollEstado');
 const alertBannerEl = document.getElementById('alertBanner');
 const cardsEl = document.getElementById('cards');
 const sessionsArchiveEl = document.getElementById('sessionsArchive');
@@ -65,6 +68,7 @@ function poblarPlataformas(estacionNombre) {
     currentStopId = lista.length ? lista[0].stopId : null;
     cardsEl.innerHTML = '';
     monitorCaches = { historyCache: {}, approachingCache: {} };
+    ultimoPollExitosoMs = null;
     if (session) {
         session.meta.lastStopId = currentStopId;
         guardarSesion(session);
@@ -87,6 +91,7 @@ plataformaSelect.addEventListener('change', () => {
     currentStopId = plataformaSelect.value;
     cardsEl.innerHTML = '';
     monitorCaches = { historyCache: {}, approachingCache: {} };
+    ultimoPollExitosoMs = null;
     if (session) {
         session.meta.lastStopId = currentStopId;
         guardarSesion(session);
@@ -109,6 +114,7 @@ toggleSessionBtn.addEventListener('click', () => {
         monitorCaches = session.caches;
         archivarSesionActiva();
         session = null;
+        liberarWakeLock();
         actualizarUIBotonSesion(false);
         auditSeleccion = null;
         renderizarAuditoria();
@@ -131,6 +137,7 @@ startSessionForm.addEventListener('submit', (ev) => {
     guardarSesion(session);
     actualizarUIBotonSesion(true);
     iniciarPolling();
+    solicitarWakeLock();
 });
 
 // --- sesiones archivadas (pendientes de descarga, normalmente hasta el final del día) ---
@@ -203,6 +210,55 @@ function actualizarRelojUI() {
 }
 
 setInterval(actualizarRelojUI, 1000);
+
+// Indicador de qué tan fresca está la última respuesta real del SIC -- independiente del reloj
+// de arriba, que solo calcula hora local y sigue "corriendo" aunque el polling lleve minutos
+// muerto (ver acta: el reloj no es prueba de que el polling esté vivo).
+function actualizarPollEstadoUI() {
+    if (!currentStopId) {
+        pollEstadoEl.textContent = '';
+        pollEstadoEl.classList.remove('alerta');
+        return;
+    }
+    if (ultimoPollExitosoMs === null) {
+        pollEstadoEl.textContent = 'datos del SIC: esperando primera respuesta…';
+        pollEstadoEl.classList.remove('alerta');
+        return;
+    }
+    const segundos = Math.round((Date.now() - ultimoPollExitosoMs) / 1000);
+    const alerta = segundos > (POLL_INTERVAL_MS / 1000) * 2; // más de 2 ciclos sin respuesta nueva
+    pollEstadoEl.textContent = alerta
+        ? `⚠ datos del SIC desactualizados hace ${segundos}s — revisa pantalla/conexión`
+        : `datos del SIC actualizados hace ${segundos}s`;
+    pollEstadoEl.classList.toggle('alerta', alerta);
+}
+
+setInterval(actualizarPollEstadoUI, 1000);
+
+// --- wake lock: evita que la pantalla se apague SOLA por inactividad mientras hay captura
+// activa. No evita que el usuario la bloquee a propósito con el botón de encendido -- eso el
+// sistema operativo nunca lo permite bloquear desde una página web. Por eso sigue siendo
+// necesario el indicador de arriba (actualizarPollEstadoUI): el wake lock reduce un caso, no
+// todos. Se libera solo cuando el documento pierde visibilidad, así que hay que volver a
+// pedirlo cuando vuelve a estar visible.
+async function solicitarWakeLock() {
+    if (!session || !('wakeLock' in navigator)) return;
+    try {
+        wakeLock = await navigator.wakeLock.request('screen');
+        wakeLock.addEventListener('release', () => { wakeLock = null; });
+    } catch (e) {
+        wakeLock = null; // permiso denegado, batería baja, o navegador sin soporte -- no crítico
+    }
+}
+
+function liberarWakeLock() {
+    if (wakeLock) wakeLock.release().catch(() => {});
+    wakeLock = null;
+}
+
+document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'visible' && session) solicitarWakeLock();
+});
 
 // --- polling del SIC ---
 function iniciarPolling() {
@@ -283,6 +339,7 @@ async function pollTick() {
         return; // se deja el hueco, sin reintento inmediato
     }
     const localDespues = Date.now();
+    ultimoPollExitosoMs = localDespues;
 
     const serverTime = extraerTimestampServidor(messages);
     if (serverTime !== null) actualizarOffsetReloj(serverTime, localAntes, localDespues);
@@ -482,6 +539,7 @@ async function init() {
             seleccionarEnSelects(currentStopId);
         }
         iniciarPolling();
+        solicitarWakeLock();
     } else {
         actualizarUIBotonSesion(false);
     }

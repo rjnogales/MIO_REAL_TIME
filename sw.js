@@ -7,7 +7,7 @@
 // nada nuevo y sigue sirviendo el shell viejo cacheado -- ninguna cantidad de recargas lo
 // arregla, hay que subir este número. (Pasó el 2026-11-09: dos despliegues seguidos sin subirlo
 // dejaron el reloj/monitoreo nuevos sin efecto para quien ya había abierto la app antes.)
-const CACHE_NAME = 'sic-audit-shell-v3';
+const CACHE_NAME = 'sic-audit-shell-v4';
 const SHELL_FILES = [
     './',
     './index.html',
