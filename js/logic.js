@@ -47,21 +47,15 @@ function extraerPredicciones(messages) {
     return { predicciones, alertas };
 }
 
-// Orden visual de rutas, igual al kiosco: E, T, P, A, C/F, otros; luego alfanumérico.
-function prioridadRuta(route) {
-    const prefix = (route || '').charAt(0).toUpperCase();
-    if (prefix === 'E') return 1;
-    if (prefix === 'T') return 2;
-    if (prefix === 'P') return 3;
-    if (prefix === 'A') return 4;
-    if (prefix === 'C' || prefix === 'F') return 5;
-    return 6;
-}
-
+// Orden visual de las tarjetas: la ruta cuyo próximo bus llega primero, arriba -- a diferencia
+// del kiosco oficial (que ordena por prefijo de ruta E/T/P/A/C-F fijo), aquí lo que importa en
+// campo es de un vistazo cuál hay que mirar ahora. Las rutas sin próxima llegada activa quedan
+// al final.
 function ordenarRutas(rows) {
     return rows.slice().sort((a, b) => {
-        const pa = prioridadRuta(a.route), pb = prioridadRuta(b.route);
-        if (pa !== pb) return pa - pb;
+        const ea = a.nextArrival ? a.nextArrival.eta : Infinity;
+        const eb = b.nextArrival ? b.nextArrival.eta : Infinity;
+        if (ea !== eb) return ea - eb;
         return a.route.localeCompare(b.route, undefined, { numeric: true, sensitivity: 'base' });
     });
 }
