@@ -418,6 +418,17 @@ async function pollTick() {
     if (auditSeleccion) actualizarPrediccionAuditoria();
 }
 
+// Si hay predicción (hora) pero sin vehículo resuelto (vehicle_mc vacío), es candidato a
+// "fantasma": el sistema generó un horario pero el operador no le asignó un bus a esa tarea --
+// si eso nunca se completa antes de que pase la hora, ese horario se va a esfumar sin que llegue
+// ningún bus. Se marca para que el auditor lo note en el momento, no solo revisando el CSV
+// después.
+function renderVehiculoSlot(slot) {
+    if (!slot) return '';
+    if (slot.vehicleMc) return `<small>${slot.vehicleMc}</small>`;
+    return '<small class="sin-bus">sin bus asignado</small>';
+}
+
 // --- pestaña principal: tarjetas ---
 function renderizarCards(rows) {
     if (!rows.length) {
@@ -428,6 +439,7 @@ function renderizarCards(rows) {
     cardsEl.innerHTML = rows.map(r => {
         const last = formatearTiempo(r.lastDeparted?.eta ?? null, now, true);
         const next = formatearTiempo(r.nextArrival?.eta ?? null, now, false);
+        const foll = formatearTiempo(r.following?.eta ?? null, now, false);
         const gpsMin = r.nextArrival?.etaGpsMin;
         const gpsTexto = (gpsMin !== null && gpsMin !== undefined) ? `GPS: ${gpsMin} min` : '';
         return `
@@ -438,8 +450,9 @@ function renderizarCards(rows) {
                 <button class="btn-auditar" data-route="${r.route}" data-destino="${r.destination}">Auditar</button>
             </div>
             <div class="card-tiempos">
-                <div class="tiempo-col"><label>Última Atención</label><span class="${last.estado}">${last.texto}</span><small>${r.lastDeparted?.vehicleMc || ''}</small></div>
-                <div class="tiempo-col"><label>Próxima Llegada</label><span class="${next.estado}">${next.texto}</span><small>${r.nextArrival?.vehicleMc || ''}</small>${gpsTexto ? `<small class="gps-eta">${gpsTexto}</small>` : ''}</div>
+                <div class="tiempo-col"><label>Última Atención</label><span class="${last.estado}">${last.texto}</span>${renderVehiculoSlot(r.lastDeparted)}</div>
+                <div class="tiempo-col"><label>Próxima Llegada</label><span class="${next.estado}">${next.texto}</span>${renderVehiculoSlot(r.nextArrival)}${gpsTexto ? `<small class="gps-eta">${gpsTexto}</small>` : ''}</div>
+                <div class="tiempo-col"><label>Siguiente</label><span class="${foll.estado}">${foll.texto}</span>${renderVehiculoSlot(r.following)}</div>
             </div>
         </div>`;
     }).join('');

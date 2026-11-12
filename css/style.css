@@ -203,6 +203,7 @@ main {
 .tiempo-col span.sin-dato { color: #bbb; }
 
 .tiempo-col small.gps-eta { color: var(--brand-cyan); font-weight: 600; }
+.tiempo-col small.sin-bus { color: var(--warn); font-weight: 600; }
 
 .muted {
     color: #777;
