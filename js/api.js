@@ -9,6 +9,28 @@ const RETURN_LIST = 'StopPointName,LineName,DestinationName,EstimatedTime,Vehicl
 const PARADAS_URL = 'https://www.utryt.com.co/priuebas/SIC/assets/paradas.json';
 const PARADAS_CACHE_KEY = 'sic_paradas_cache_v1';
 
+// Segunda fuente, independiente del SIC: servicios.siur.com.co (app pública "Buscarutas MIO
+// Cali"), con CORS abierto (confirmado con curl). Da el tiempo de llegada calculado por posición
+// GPS real del bus, no por horario programado como el SIC -- se usa como comparación, no como
+// reemplazo. El campo numeroDeBus de esta API es el mismo código corto que vehicle_raw del SIC
+// (confirmado cruzando ambas respuestas para el mismo StopId/parada en el mismo instante).
+const SIUR_BASE = 'https://servicios.siur.com.co/buscarutas/api';
+
+async function fetchBusesProximosGps(stopId) {
+    const res = await fetch(`${SIUR_BASE}/buses_proximos_a_llegar.php?parada=${encodeURIComponent(stopId)}`, { cache: 'no-store' });
+    if (!res.ok) throw new Error('HTTP ' + res.status);
+    const data = await res.json();
+    return Array.isArray(data?.buses) ? data.buses : [];
+}
+
+// "2 min" -> 2. SIUR da el conteo en minutos enteros (resolución mucho más gruesa que los
+// milisegundos del SIC) -- cualquier comparación entre las dos fuentes tiene un ruido de
+// hasta +-1 min que no es divergencia real, solo redondeo.
+function parseCuentaRegresivaMin(texto) {
+    const m = /(-?\d+)/.exec(texto || '');
+    return m ? parseInt(m[1], 10) : null;
+}
+
 function buildStopUrl(stopId) {
     return `${API_BASE}?StopId=${encodeURIComponent(stopId)}&ReturnList=${encodeURIComponent(RETURN_LIST)}`;
 }

@@ -2,6 +2,7 @@
 // polling del SIC, tarjetas de monitoreo y flujo de auditoría (hora + identidad).
 
 const POLL_INTERVAL_MS = 15000; // igual al apiFreq del kiosco oficial (CONFIG.apiFreq = 15)
+const LIMITE_FILAS_SESION = 1000; // al llegar a esto, se descarga esa parte y se vacia localStorage (ver rotarParteSesion)
 
 let paradasPlanas = {};       // stopId -> "Estacion Plataforma"
 let estacionesAgrupadas = {}; // estacion -> [{stopId, plataforma, nombreCompleto}]
@@ -40,6 +41,11 @@ const startSessionDialog = document.getElementById('startSessionDialog');
 const startSessionForm = document.getElementById('startSessionForm');
 const auditorInput = document.getElementById('auditorInput');
 const startEstacionLabel = document.getElementById('startEstacionLabel');
+const btnAbrirSorpresa = document.getElementById('btnAbrirSorpresa');
+const sorpresaFormEl = document.getElementById('sorpresaForm');
+const sorpresaRutaInput = document.getElementById('sorpresaRuta');
+const sorpresaIdInput = document.getElementById('sorpresaId');
+const btnGuardarSorpresa = document.getElementById('btnGuardarSorpresa');
 
 // --- pestañas ---
 function cambiarTab(tab) {
@@ -155,7 +161,7 @@ function renderizarSesionesArchivadas() {
             const fechaHora = `${d.toLocaleDateString()} ${d.toLocaleTimeString()}`;
             return `
             <div class="sesion-archivada${s.meta.descargada ? ' descargada' : ''}">
-                <span>${s.meta.estacion} — ${fechaHora} — ${s.meta.auditor} — ${s.rows.length} filas${s.meta.descargada ? ' (ya descargada)' : ''}</span>
+                <span>${s.meta.estacion} — ${fechaHora} — ${s.meta.auditor} — parte ${s.meta.parte || 1} — ${s.rows.length} filas${s.meta.descargada ? ' (ya descargada)' : ''}</span>
                 <button type="button" class="btn-secundario" data-id="${s.meta.id}" data-accion="descargar">Descargar CSV</button>
                 <button type="button" class="btn-secundario" data-id="${s.meta.id}" data-accion="eliminar">Eliminar</button>
             </div>`;
@@ -165,7 +171,7 @@ function renderizarSesionesArchivadas() {
         btn.addEventListener('click', () => {
             const s = listarSesionesArchivadas().find((x) => x.meta.id === btn.dataset.id);
             if (!s) return;
-            descargarCsvSesion(s);
+            descargarCsvSesion(s, s.meta.parte);
             marcarSesionDescargada(s.meta.id);
             renderizarSesionesArchivadas();
         });
@@ -283,11 +289,13 @@ function filaBase(now) {
         vehicle_raw: '', vehicle_mc: '', estimated_time: '', planned_departure_raw: '', message_text: '',
         raw_mensaje: '',
         bus_auditado: 'no', hora_llegada_auditor: '', identidad_ok: '', numero_bus_fisico: '',
-        auditor: session.meta.auditor
+        auditor: session.meta.auditor, eta_gps: ''
     };
 }
 
-function filaDesdeMensaje(m, now) {
+// gpsPorVehiculo: { numeroDeBus: minutosRestantes } del ciclo actual (ver pollTick) -- fuente
+// independiente del SIC (servicios.siur.com.co), calculada por GPS real del bus.
+function filaDesdeMensaje(m, now, gpsPorVehiculo) {
     const fila = filaBase(now);
     if (m && m.parseError) {
         fila.tipo_mensaje = 'PARSE_ERROR';
@@ -306,6 +314,8 @@ function filaDesdeMensaje(m, now) {
         fila.vehicle_mc = vehiculo.numero ?? '';
         fila.estimated_time = formatearEpochSiExiste(m[8]);
         fila.planned_departure_raw = formatearEpochSiExiste(m[7]);
+        const minutosGps = gpsPorVehiculo ? gpsPorVehiculo[fila.vehicle_raw] : undefined;
+        fila.eta_gps = (minutosGps !== undefined && minutosGps !== null) ? formatearTimestampLocal(now + minutosGps * 60000) : '';
         if (auditSeleccion) {
             const mismoTrip = auditSeleccion.tripId !== null && String(auditSeleccion.tripId) === String(m[6]);
             const mismoFallback = auditSeleccion.tripId === null && auditSeleccion.route === m[2] && auditSeleccion.destination === m[4];
@@ -317,6 +327,27 @@ function filaDesdeMensaje(m, now) {
         }
     }
     return fila;
+}
+
+// Se usa en vez de agregarFilas() directo en cualquier punto donde se graban filas durante una
+// sesión, para que el corte por límite de filas (ver rotarParteSesion) nunca se pueda olvidar
+// en un punto nuevo.
+function agregarFilasConLimite(nuevasFilas) {
+    if (!session) return;
+    agregarFilas(session, nuevasFilas);
+    if (session.rows.length >= LIMITE_FILAS_SESION) rotarParteSesion();
+}
+
+// Nunca se descarta nada (ver acta): al llegar al límite se descarga esa parte tal cual está
+// (misma sesión, mismo auditor/estación, numerada _01, _02, ...) y se vacía session.rows en
+// localStorage para que el dispositivo no se quede sin espacio a mitad de una jornada larga.
+// Los caches (historyCache/approachingCache) NO se tocan -- si se vaciaran junto con las filas,
+// Última Atención/Próxima Llegada se rompería cada 1000 filas.
+function rotarParteSesion() {
+    descargarCsvSesion(session, session.meta.parte);
+    session.rows = [];
+    session.meta.parte = (session.meta.parte || 1) + 1;
+    guardarSesion(session);
 }
 
 // Consulta el SIC y sincroniza el reloj SIEMPRE que haya una plataforma seleccionada, haya o
@@ -334,7 +365,7 @@ async function pollTick() {
             const filaError = filaBase(ahoraSincronizado());
             filaError.tipo_mensaje = 'ERROR';
             filaError.raw_mensaje = String((e && e.message) || e);
-            agregarFilas(session, [filaError]);
+            agregarFilasConLimite([filaError]);
         }
         return; // se deja el hueco, sin reintento inmediato
     }
@@ -344,6 +375,17 @@ async function pollTick() {
     const serverTime = extraerTimestampServidor(messages);
     if (serverTime !== null) actualizarOffsetReloj(serverTime, localAntes, localDespues);
     const now = ahoraSincronizado();
+
+    // Segunda fuente independiente (GPS real, ver js/api.js) -- no crítica: si falla este ciclo,
+    // simplemente se deja eta_gps vacío, no se detiene el polling del SIC por esto.
+    let gpsPorVehiculo = {};
+    try {
+        const buses = await fetchBusesProximosGps(currentStopId);
+        for (const b of buses) {
+            const minutos = parseCuentaRegresivaMin(b.cuentaRegresiva);
+            if (minutos !== null) gpsPorVehiculo[b.numeroDeBus] = minutos;
+        }
+    } catch (e) { /* SIUR no disponible este ciclo */ }
 
     if (session) {
         // Los mensajes tipo 5-9 son metadatos auxiliares que ni el propio kiosco oficial usa
@@ -355,14 +397,20 @@ async function pollTick() {
         // igual que cualquier mensaje no reconocido (criterio: solo se descarta lo que ya está
         // identificado y confirmado como irrelevante).
         const mensajesParaCsv = messages.filter(m => !(Array.isArray(m) && m[0] >= 5 && m[0] <= 9));
-        const filasCrudas = mensajesParaCsv.map(m => filaDesdeMensaje(m, now));
-        agregarFilas(session, filasCrudas);
+        const filasCrudas = mensajesParaCsv.map(m => filaDesdeMensaje(m, now, gpsPorVehiculo));
+        agregarFilasConLimite(filasCrudas);
     }
 
     const mensajesValidos = messages.filter(m => Array.isArray(m));
     const { predicciones, alertas } = extraerPredicciones(mensajesValidos);
     const caches = session ? session.caches : monitorCaches;
     currentPlatformRows = agruparPrediccionesPorRuta(predicciones, currentStopId, now, caches);
+    for (const row of currentPlatformRows) {
+        if (row.nextArrival) {
+            const minutos = gpsPorVehiculo[row.nextArrival.vehicleRaw];
+            row.nextArrival.etaGpsMin = (minutos !== undefined) ? minutos : null;
+        }
+    }
     if (session) guardarSesion(session);
 
     renderizarCards(currentPlatformRows);
@@ -380,7 +428,8 @@ function renderizarCards(rows) {
     cardsEl.innerHTML = rows.map(r => {
         const last = formatearTiempo(r.lastDeparted?.eta ?? null, now, true);
         const next = formatearTiempo(r.nextArrival?.eta ?? null, now, false);
-        const foll = formatearTiempo(r.following?.eta ?? null, now, false);
+        const gpsMin = r.nextArrival?.etaGpsMin;
+        const gpsTexto = (gpsMin !== null && gpsMin !== undefined) ? `GPS: ${gpsMin} min` : '';
         return `
         <div class="card-ruta">
             <div class="card-header">
@@ -390,8 +439,7 @@ function renderizarCards(rows) {
             </div>
             <div class="card-tiempos">
                 <div class="tiempo-col"><label>Última Atención</label><span class="${last.estado}">${last.texto}</span><small>${r.lastDeparted?.vehicleMc || ''}</small></div>
-                <div class="tiempo-col"><label>Próxima Llegada</label><span class="${next.estado}">${next.texto}</span><small>${r.nextArrival?.vehicleMc || ''}</small></div>
-                <div class="tiempo-col"><label>Siguiente</label><span class="${foll.estado}">${foll.texto}</span><small>${r.following?.vehicleMc || ''}</small></div>
+                <div class="tiempo-col"><label>Próxima Llegada</label><span class="${next.estado}">${next.texto}</span><small>${r.nextArrival?.vehicleMc || ''}</small>${gpsTexto ? `<small class="gps-eta">${gpsTexto}</small>` : ''}</div>
             </div>
         </div>`;
     }).join('');
@@ -497,7 +545,7 @@ btnMarcarHora.addEventListener('click', () => {
     if (!auditSeleccion || !session) return;
     const fila = construirFilaAuditoria('AUDITORIA_HORA');
     fila.hora_llegada_auditor = fila.timestamp_captura;
-    agregarFilas(session, [fila]);
+    agregarFilasConLimite([fila]);
     auditSeleccion.marcada.hora = fila.hora_llegada_auditor;
     actualizarResumenMarcas();
 });
@@ -506,7 +554,7 @@ btnIdentidadSi.addEventListener('click', () => {
     if (!auditSeleccion || !session) return;
     const fila = construirFilaAuditoria('AUDITORIA_IDENTIDAD');
     fila.identidad_ok = 'si';
-    agregarFilas(session, [fila]);
+    agregarFilasConLimite([fila]);
     auditSeleccion.marcada.identidad = 'sí coincide';
     busFisicoWrapEl.classList.add('hidden');
     actualizarResumenMarcas();
@@ -525,11 +573,39 @@ btnGuardarBusFisico.addEventListener('click', () => {
     const fila = construirFilaAuditoria('AUDITORIA_IDENTIDAD');
     fila.identidad_ok = 'no';
     fila.numero_bus_fisico = numero;
-    agregarFilas(session, [fila]);
+    agregarFilasConLimite([fila]);
     auditSeleccion.marcada.identidad = `no coincide (bus real: ${numero})`;
     busFisicoWrapEl.classList.add('hidden');
     numeroBusFisicoInput.value = '';
     actualizarResumenMarcas();
+});
+
+// --- bus sorpresa: llega un bus en una ruta vigilada, pero su ID no corresponde a ninguno de
+// los pronosticados (ni Última Atención, ni Próxima Llegada, ni Siguiente) -- distinto de
+// "Identidad: No coincide", que asume que el bus que llegó SÍ es el trip que se está auditando,
+// solo que con número físico equivocado. Independiente de auditSeleccion a propósito: el
+// sistema debe preguntar la ruta, no asumirla de una tarjeta ya elegida.
+btnAbrirSorpresa.addEventListener('click', () => {
+    if (!session) { alert('Primero tenés que iniciar la captura para poder registrar un bus sorpresa.'); return; }
+    sorpresaFormEl.classList.remove('hidden');
+    sorpresaRutaInput.value = '';
+    sorpresaIdInput.value = '';
+    sorpresaRutaInput.focus();
+});
+
+btnGuardarSorpresa.addEventListener('click', () => {
+    if (!session) return;
+    const ruta = sorpresaRutaInput.value.trim();
+    const numero = sorpresaIdInput.value.trim();
+    if (!ruta || !numero) { alert('Hace falta la ruta y el número del bus.'); return; }
+    const now = ahoraSincronizado();
+    const fila = filaBase(now);
+    fila.tipo_mensaje = 'AUDITORIA_SORPRESA';
+    fila.line_name = ruta;
+    fila.numero_bus_fisico = numero;
+    fila.hora_llegada_auditor = fila.timestamp_captura;
+    agregarFilasConLimite([fila]);
+    sorpresaFormEl.classList.add('hidden');
 });
 
 // --- arranque ---

@@ -12,7 +12,8 @@ function iniciarSesion({ estacion, auditor }) {
             id: `${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
             estacion,
             auditor,
-            startTime: ahoraSincronizado()
+            startTime: ahoraSincronizado(),
+            parte: 1 // número de entrega -- sube cada vez que se corta por el límite de filas (ver js/app.js)
         },
         rows: [],
         caches: { historyCache: {}, approachingCache: {} }

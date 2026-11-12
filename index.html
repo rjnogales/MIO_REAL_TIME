@@ -48,6 +48,17 @@
                 <button id="btnGuardarBusFisico" type="button">Guardar</button>
             </div>
         </div>
+
+        <div class="sorpresa-section">
+            <button id="btnAbrirSorpresa" type="button" class="btn-secundario">+ Bus sorpresa (llegó uno que no estaba pronosticado)</button>
+            <div id="sorpresaForm" class="sorpresa-form hidden">
+                <label for="sorpresaRuta">Ruta que trae el bus:</label>
+                <input type="text" id="sorpresaRuta" placeholder="ej. E21" autocomplete="off">
+                <label for="sorpresaId">Número físico del bus:</label>
+                <input type="text" id="sorpresaId" inputmode="numeric" placeholder="ej. MC 21035" autocomplete="off">
+                <button id="btnGuardarSorpresa" type="button" class="btn-grande">Registrar bus sorpresa</button>
+            </div>
+        </div>
     </section>
 </main>
 
