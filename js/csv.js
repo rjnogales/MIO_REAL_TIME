@@ -7,7 +7,8 @@ const CSV_COLUMNS = [
     'vehicle_raw', 'vehicle_mc', 'estimated_time', 'planned_departure_raw', 'message_text',
     'raw_mensaje',
     'bus_auditado', 'hora_llegada_auditor', 'identidad_ok', 'numero_bus_fisico', 'auditor',
-    'eta_gps' // hora estimada por posición GPS real (servicios.siur.com.co), ver js/api.js -- solo tipo 1
+    'eta_gps', // hora estimada por posición GPS real (servicios.siur.com.co), ver js/api.js -- solo tipo 1
+    'distancia_gps_m' // distancia en linea recta bus-parada en metros (haversine), ver js/app.js -- solo tipo 1, solo para el bus de "Próxima Llegada" de cada ruta
 ];
 
 function escaparCsv(valor) {

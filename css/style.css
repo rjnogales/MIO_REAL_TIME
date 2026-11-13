@@ -204,6 +204,7 @@ main {
 
 .tiempo-col small.gps-eta { color: var(--brand-cyan); font-weight: 600; }
 .tiempo-col small.sin-bus { color: var(--warn); font-weight: 600; }
+.tiempo-col small.dist-gps { color: #888; font-style: italic; }
 
 .muted {
     color: #777;

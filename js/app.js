@@ -13,6 +13,9 @@ let currentPlatformRows = [];
 // Caches de Última Atención/Próxima Llegada para cuando se está mirando Monitoreo sin una
 // sesión de captura activa (ver pollTick) -- cuando hay sesión, se usan las de session.caches.
 let monitorCaches = { historyCache: {}, approachingCache: {} };
+// stopId -> {lat, lon} -- las coordenadas de una parada no cambian, se consulta una sola vez
+// por parada (ver obtenerCoordsParada) y se reutiliza el resto de la sesión.
+let paradaCoordsCache = {};
 let auditSeleccion = null; // { route, destination, tripId, vehicleMc, marcada:{} }
 let ultimoPollExitosoMs = null; // Date.now() del último fetchStopMessages que sí respondió -- ver actualizarPollEstadoUI
 let wakeLock = null; // sentinel del Screen Wake Lock, solo mientras hay sesión de captura activa
@@ -289,13 +292,15 @@ function filaBase(now) {
         vehicle_raw: '', vehicle_mc: '', estimated_time: '', planned_departure_raw: '', message_text: '',
         raw_mensaje: '',
         bus_auditado: 'no', hora_llegada_auditor: '', identidad_ok: '', numero_bus_fisico: '',
-        auditor: session.meta.auditor, eta_gps: ''
+        auditor: session.meta.auditor, eta_gps: '', distancia_gps_m: ''
     };
 }
 
 // gpsPorVehiculo: { numeroDeBus: minutosRestantes } del ciclo actual (ver pollTick) -- fuente
 // independiente del SIC (servicios.siur.com.co), calculada por GPS real del bus.
-function filaDesdeMensaje(m, now, gpsPorVehiculo) {
+// distanciaPorVehiculo: { vehicleRaw: metros } -- solo para los buses de "Próxima Llegada" de
+// cada ruta (ver anexarDistanciaGps), no para todo el crudo.
+function filaDesdeMensaje(m, now, gpsPorVehiculo, distanciaPorVehiculo) {
     const fila = filaBase(now);
     if (m && m.parseError) {
         fila.tipo_mensaje = 'PARSE_ERROR';
@@ -316,6 +321,8 @@ function filaDesdeMensaje(m, now, gpsPorVehiculo) {
         fila.planned_departure_raw = formatearEpochSiExiste(m[7]);
         const minutosGps = gpsPorVehiculo ? gpsPorVehiculo[fila.vehicle_raw] : undefined;
         fila.eta_gps = (minutosGps !== undefined && minutosGps !== null) ? formatearTimestampLocal(now + minutosGps * 60000) : '';
+        const metros = distanciaPorVehiculo ? distanciaPorVehiculo[fila.vehicle_raw] : undefined;
+        fila.distancia_gps_m = (metros !== undefined && metros !== null) ? metros : '';
         if (auditSeleccion) {
             const mismoTrip = auditSeleccion.tripId !== null && String(auditSeleccion.tripId) === String(m[6]);
             const mismoFallback = auditSeleccion.tripId === null && auditSeleccion.route === m[2] && auditSeleccion.destination === m[4];
@@ -348,6 +355,44 @@ function rotarParteSesion() {
     session.rows = [];
     session.meta.parte = (session.meta.parte || 1) + 1;
     guardarSesion(session);
+}
+
+// Coordenadas de una parada, cacheadas en memoria (no cambian) -- se consulta paradas.php de
+// cualquier ruta que pase por esta parada (la primera que funcione alcanza, es la misma
+// plataforma física para todas). Si falla, NO se cachea el fallo, para reintentar en el próximo ciclo.
+async function obtenerCoordsParada(route, stopId) {
+    if (paradaCoordsCache[stopId]) return paradaCoordsCache[stopId];
+    try {
+        const lista = await fetchParadasDeRuta(route);
+        const encontrada = lista.find(p => String(p.id) === String(stopId));
+        if (encontrada) {
+            const coords = { lat: parseFloat(encontrada.latitud), lon: parseFloat(encontrada.longitud) };
+            paradaCoordsCache[stopId] = coords;
+            return coords;
+        }
+    } catch (e) { /* SIUR no disponible este ciclo -- se reintenta el próximo */ }
+    return null;
+}
+
+// Distancia en línea recta (no de calle, ver haversineMetros en api.js) entre el bus de
+// "Próxima Llegada" de cada ruta y la parada -- deliberadamente acotado a esos buses (uno por
+// ruta visible), no a todo el crudo de la plataforma, para no disparar un bus.php por cada una
+// de las ~20-30 predicciones del ciclo.
+async function anexarDistanciaGps(rows, stopId) {
+    const distanciaPorVehiculo = {};
+    await Promise.all(rows.map(async (row) => {
+        if (!row.nextArrival || !row.nextArrival.vehicleMc) return;
+        const coords = await obtenerCoordsParada(row.route, stopId);
+        if (!coords) return;
+        const numeroDigits = row.nextArrival.vehicleMc.replace(/^MC\s*/, '');
+        let posBus;
+        try { posBus = await fetchBusPosicion(numeroDigits); } catch (e) { return; }
+        if (!posBus) return;
+        const metros = Math.round(haversineMetros(posBus.lat, posBus.lon, coords.lat, coords.lon));
+        row.nextArrival.distanciaMetros = metros;
+        distanciaPorVehiculo[row.nextArrival.vehicleRaw] = metros;
+    }));
+    return distanciaPorVehiculo;
 }
 
 // Consulta el SIC y sincroniza el reloj SIEMPRE que haya una plataforma seleccionada, haya o
@@ -387,20 +432,6 @@ async function pollTick() {
         }
     } catch (e) { /* SIUR no disponible este ciclo */ }
 
-    if (session) {
-        // Los mensajes tipo 5-9 son metadatos auxiliares que ni el propio kiosco oficial usa
-        // para nada (ver acta, sección 2) y que nunca se lograron descifrar -- solo repiten
-        // trip_id/stop_id sin aportar nada a la auditoría. Se dejaron de registrar el 2026-11-09
-        // porque eran el 74% de las filas del CSV (ver acta, sección 13) sin ningún valor para
-        // comparar hora predicha vs. real ni identidad del bus. Los tipos 0 (plataforma),
-        // 1 (predicción), 2 (alerta) y 4 (reloj del servidor) sí se siguen guardando siempre,
-        // igual que cualquier mensaje no reconocido (criterio: solo se descarta lo que ya está
-        // identificado y confirmado como irrelevante).
-        const mensajesParaCsv = messages.filter(m => !(Array.isArray(m) && m[0] >= 5 && m[0] <= 9));
-        const filasCrudas = mensajesParaCsv.map(m => filaDesdeMensaje(m, now, gpsPorVehiculo));
-        agregarFilasConLimite(filasCrudas);
-    }
-
     const mensajesValidos = messages.filter(m => Array.isArray(m));
     const { predicciones, alertas } = extraerPredicciones(mensajesValidos);
     const caches = session ? session.caches : monitorCaches;
@@ -411,6 +442,24 @@ async function pollTick() {
             row.nextArrival.etaGpsMin = (minutos !== undefined) ? minutos : null;
         }
     }
+    // Distancia (línea recta) del bus de "Próxima Llegada" de cada ruta a la parada -- se calcula
+    // acá, antes de armar las filas del CSV, para poder anexarla a las filas de este mismo ciclo.
+    const distanciaPorVehiculo = await anexarDistanciaGps(currentPlatformRows, currentStopId);
+
+    if (session) {
+        // Los mensajes tipo 5-9 son metadatos auxiliares que ni el propio kiosco oficial usa
+        // para nada (ver acta, sección 2) y que nunca se lograron descifrar -- solo repiten
+        // trip_id/stop_id sin aportar nada a la auditoría. Se dejaron de registrar el 2026-11-09
+        // porque eran el 74% de las filas del CSV (ver acta, sección 13) sin ningún valor para
+        // comparar hora predicha vs. real ni identidad del bus. Los tipos 0 (plataforma),
+        // 1 (predicción), 2 (alerta) y 4 (reloj del servidor) sí se siguen guardando siempre,
+        // igual que cualquier mensaje no reconocido (criterio: solo se descarta lo que ya está
+        // identificado y confirmado como irrelevante).
+        const mensajesParaCsv = messages.filter(m => !(Array.isArray(m) && m[0] >= 5 && m[0] <= 9));
+        const filasCrudas = mensajesParaCsv.map(m => filaDesdeMensaje(m, now, gpsPorVehiculo, distanciaPorVehiculo));
+        agregarFilasConLimite(filasCrudas);
+    }
+
     if (session) guardarSesion(session);
 
     renderizarCards(currentPlatformRows);
@@ -442,6 +491,8 @@ function renderizarCards(rows) {
         const foll = formatearTiempo(r.following?.eta ?? null, now, false);
         const gpsMin = r.nextArrival?.etaGpsMin;
         const gpsTexto = (gpsMin !== null && gpsMin !== undefined) ? `GPS: ${gpsMin} min` : '';
+        const distM = r.nextArrival?.distanciaMetros;
+        const distTexto = (distM !== null && distM !== undefined) ? (distM >= 1000 ? `~${(distM / 1000).toFixed(1)} km` : `~${distM} m`) : '';
         return `
         <div class="card-ruta">
             <div class="card-header">
@@ -451,7 +502,7 @@ function renderizarCards(rows) {
             </div>
             <div class="card-tiempos">
                 <div class="tiempo-col"><label>Última Atención</label><span class="${last.estado}">${last.texto}</span>${renderVehiculoSlot(r.lastDeparted)}</div>
-                <div class="tiempo-col"><label>Próxima Llegada</label><span class="${next.estado}">${next.texto}</span>${renderVehiculoSlot(r.nextArrival)}${gpsTexto ? `<small class="gps-eta">${gpsTexto}</small>` : ''}</div>
+                <div class="tiempo-col"><label>Próxima Llegada</label><span class="${next.estado}">${next.texto}</span>${renderVehiculoSlot(r.nextArrival)}${gpsTexto ? `<small class="gps-eta">${gpsTexto}</small>` : ''}${distTexto ? `<small class="dist-gps">${distTexto} en línea recta</small>` : ''}</div>
                 <div class="tiempo-col"><label>Siguiente</label><span class="${foll.estado}">${foll.texto}</span>${renderVehiculoSlot(r.following)}</div>
             </div>
         </div>`;

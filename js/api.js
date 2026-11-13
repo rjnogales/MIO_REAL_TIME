@@ -31,6 +31,39 @@ function parseCuentaRegresivaMin(texto) {
     return m ? parseInt(m[1], 10) : null;
 }
 
+// Catálogo de paradas (con coordenadas) de una ruta de SIUR -- se usa una sola vez por parada
+// para sacar su lat/lon (ver obtenerCoordsParada en app.js, que cachea el resultado porque las
+// coordenadas de una parada no cambian).
+async function fetchParadasDeRuta(route) {
+    const res = await fetch(`${SIUR_BASE}/paradas.php?linea=${encodeURIComponent(route)}`, { cache: 'no-store' });
+    if (!res.ok) throw new Error('HTTP ' + res.status);
+    const data = await res.json();
+    return Array.isArray(data) ? data : [];
+}
+
+// Posición GPS en vivo de un bus físico específico (numeroBus = los dígitos de "MC XXXXX", sin el prefijo).
+async function fetchBusPosicion(numeroBus) {
+    const res = await fetch(`${SIUR_BASE}/bus.php?numeroBus=${encodeURIComponent(numeroBus)}`, { cache: 'no-store' });
+    if (!res.ok) throw new Error('HTTP ' + res.status);
+    const data = await res.json();
+    if (!data || data.latitud === undefined || data.longitud === undefined) return null;
+    const lat = parseFloat(data.latitud), lon = parseFloat(data.longitud);
+    if (Number.isNaN(lat) || Number.isNaN(lon)) return null;
+    return { lat, lon };
+}
+
+// Distancia en línea recta entre dos puntos lat/lon, en metros (fórmula haversine).
+// NO es distancia real de calle (no sigue el trazado de la vía, no sabe de sentidos ni cuadras) --
+// es un indicador aproximado de qué tan cerca está el bus, no un tiempo ni una ruta real.
+function haversineMetros(lat1, lon1, lat2, lon2) {
+    const R = 6371000;
+    const toRad = (deg) => deg * Math.PI / 180;
+    const dLat = toRad(lat2 - lat1);
+    const dLon = toRad(lon2 - lon1);
+    const a = Math.sin(dLat / 2) ** 2 + Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLon / 2) ** 2;
+    return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+}
+
 function buildStopUrl(stopId) {
     return `${API_BASE}?StopId=${encodeURIComponent(stopId)}&ReturnList=${encodeURIComponent(RETURN_LIST)}`;
 }
