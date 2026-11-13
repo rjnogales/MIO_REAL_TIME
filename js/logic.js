@@ -6,13 +6,13 @@
 //
 // Mapeo de campos del mensaje tipo 1, confirmado contra el código fuente del kiosco:
 //   arr[2] = ruta (LineName)
-//   arr[3] = sentido (DirectionId) -- no usado por el kiosco, pero consistente con los datos observados
+//   arr[3] = sentido (DirectionId) -- no usado por el kiosco, confirmado en campo
 //   arr[4] = destino (DestinationName)
 //   arr[5] = código corto de vehículo -> resolver con resolveVehicle() para el número físico (MC XXXXX)
-//   arr[6] = no usado por el kiosco -- probablemente TripId (ReturnList lo pide)
+//   arr[6] = TripId -- no usado por el kiosco, confirmado en campo
 //   arr[7] = no usado por el kiosco -- probablemente PlannedDepartureTime (ReturnList lo pide)
 //   arr[8] = EstimatedTime en ms (confirmado explícitamente en comentario del código fuente)
-// arr[6] y arr[7] quedan documentados como hipótesis, no confirmados -- ver acta, sección "Pendientes".
+// arr[7] sigue siendo hipótesis (PlannedDepartureTime) -- arr[3] y arr[6] confirmados en campo 2026-11-11/12.
 
 // A diferencia del kiosco, aquí NUNCA se descartan predicciones (ni por ETA nula ni por
 // vehículo sin resolver): el registro crudo de auditoría debe conservar todo.
@@ -25,7 +25,7 @@ function extraerPredicciones(messages) {
             const etaRaw = arr[8];
             const eta = (etaRaw !== null && etaRaw !== undefined) ? parseInt(etaRaw, 10) : null;
             const vehiculo = resolveVehicle(arr[5]);
-            predicciones.push({
+            const p = {
                 route: arr[2] ?? '?',
                 destination: arr[4] ?? '---',
                 directionId: arr[3] ?? null,
@@ -34,7 +34,12 @@ function extraerPredicciones(messages) {
                 vehicleRaw: arr[5] ?? null,
                 vehicleMc: vehiculo.numero,
                 eta
-            });
+            };
+            // Referencia al mensaje crudo, para saber después qué filas del CSV corresponden a lo
+            // que muestra la pantalla (ver pollTick en app.js). No enumerable a propósito: así no
+            // se cuela en los caches que se guardan en localStorage con JSON.stringify.
+            Object.defineProperty(p, 'msg', { value: arr, enumerable: false });
+            predicciones.push(p);
         } else if (arr[0] === 2 && arr[1] === null) {
             for (let i = arr.length - 1; i >= 1; i--) {
                 if (typeof arr[i] === 'string' && arr[i].length > 5) {

@@ -455,8 +455,28 @@ async function pollTick() {
         // 1 (predicción), 2 (alerta) y 4 (reloj del servidor) sí se siguen guardando siempre,
         // igual que cualquier mensaje no reconocido (criterio: solo se descarta lo que ya está
         // identificado y confirmado como irrelevante).
+        //
+        // Tipo 1 (predicciones): el SIC manda TODOS los viajes de cada ruta para la próxima hora
+        // (30-50 por plataforma), pero la pantalla solo muestra Última Atención, Próxima Llegada y
+        // Siguiente. Desde el 2026-11-13 solo se graban esos (ver acta, sección 16): la próxima y
+        // la siguiente de cada ruta, las que el SIC ya da como pasadas (fuente de Última Atención),
+        // las que no traen ETA (no se pueden ubicar, se guardan por si acaso) y cualquier fila del
+        // bus que se está auditando (aunque se haya atrasado y ya no sea "Próxima").
+        const visibles = new Set();
+        for (const r of currentPlatformRows) {
+            if (r.nextArrival && r.nextArrival.msg) visibles.add(r.nextArrival.msg);
+            if (r.following && r.following.msg) visibles.add(r.following.msg);
+        }
+        for (const p of predicciones) {
+            if (p.eta === null || p.eta < now) visibles.add(p.msg);
+        }
         const mensajesParaCsv = messages.filter(m => !(Array.isArray(m) && m[0] >= 5 && m[0] <= 9));
-        const filasCrudas = mensajesParaCsv.map(m => filaDesdeMensaje(m, now, gpsPorVehiculo, distanciaPorVehiculo));
+        const filasCrudas = [];
+        for (const m of mensajesParaCsv) {
+            const fila = filaDesdeMensaje(m, now, gpsPorVehiculo, distanciaPorVehiculo);
+            const esTipo1 = Array.isArray(m) && m[0] === 1;
+            if (!esTipo1 || visibles.has(m) || fila.bus_auditado === 'si') filasCrudas.push(fila);
+        }
         agregarFilasConLimite(filasCrudas);
     }
 

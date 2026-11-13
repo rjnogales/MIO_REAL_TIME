@@ -7,7 +7,7 @@
 // nada nuevo y sigue sirviendo el shell viejo cacheado -- ninguna cantidad de recargas lo
 // arregla, hay que subir este número. (Pasó el 2026-11-09: dos despliegues seguidos sin subirlo
 // dejaron el reloj/monitoreo nuevos sin efecto para quien ya había abierto la app antes.)
-const CACHE_NAME = 'sic-audit-shell-v8';
+const CACHE_NAME = 'sic-audit-shell-v9';
 const SHELL_FILES = [
     './',
     './index.html',
@@ -26,7 +26,14 @@ const SHELL_FILES = [
 
 self.addEventListener('install', (event) => {
     event.waitUntil(
-        caches.open(CACHE_NAME).then((cache) => cache.addAll(SHELL_FILES))
+        // cache: 'reload' = pedir cada archivo al servidor saltándose la caché HTTP del navegador.
+        // Sin esto, GitHub Pages (Cache-Control max-age=600) hacía que un worker nuevo instalado
+        // en los 10 min siguientes a un push guardara las copias VIEJAS que el navegador ya
+        // tenía -- por eso en el computador (que se prueba justo después del push) había que
+        // borrar el worker a mano, y en el celular (que se abre mucho después) no.
+        caches.open(CACHE_NAME).then((cache) =>
+            cache.addAll(SHELL_FILES.map((url) => new Request(url, { cache: 'reload' })))
+        )
     );
     self.skipWaiting();
 });
