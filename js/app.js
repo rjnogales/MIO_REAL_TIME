@@ -3,6 +3,8 @@
 
 const POLL_INTERVAL_MS = 15000; // igual al apiFreq del kiosco oficial (CONFIG.apiFreq = 15)
 const LIMITE_FILAS_SESION = 1000; // al llegar a esto, se descarga esa parte y se vacia localStorage (ver rotarParteSesion)
+const SESSION_WARN_STEP_MIN = 30; // cada cuánto se avisa cuánto lleva la captura (metodología de barrido: ventana pico = 2h)
+const SESSION_WARN_MAX_MIN = 180; // tope de avisos -- de ahí en adelante el contador sigue corriendo pero ya no interrumpe
 
 let paradasPlanas = {};       // stopId -> "Estacion Plataforma"
 let estacionesAgrupadas = {}; // estacion -> [{stopId, plataforma, nombreCompleto}]
@@ -25,6 +27,8 @@ const estacionSelect = document.getElementById('estacionSelect');
 const plataformaSelect = document.getElementById('plataformaSelect');
 const toggleSessionBtn = document.getElementById('toggleSessionBtn');
 const sessionStatusEl = document.getElementById('sessionStatus');
+const sessionTimerEl = document.getElementById('sessionTimer');
+const sessionTimerBannerEl = document.getElementById('sessionTimerBanner');
 const relojEstadoEl = document.getElementById('relojEstado');
 const pollEstadoEl = document.getElementById('pollEstado');
 const alertBannerEl = document.getElementById('alertBanner');
@@ -125,6 +129,7 @@ toggleSessionBtn.addEventListener('click', () => {
         session = null;
         liberarWakeLock();
         actualizarUIBotonSesion(false);
+        actualizarContadorSesion();
         auditSeleccion = null;
         renderizarAuditoria();
         renderizarSesionesArchivadas();
@@ -145,6 +150,7 @@ startSessionForm.addEventListener('submit', (ev) => {
     session.meta.lastStopId = currentStopId;
     guardarSesion(session);
     actualizarUIBotonSesion(true);
+    actualizarContadorSesion();
     iniciarPolling();
     solicitarWakeLock();
 });
@@ -219,6 +225,54 @@ function actualizarRelojUI() {
 }
 
 setInterval(actualizarRelojUI, 1000);
+
+// Contador de tiempo de captura: cuenta desde que se inicia la sesión (session.meta.startTime)
+// en bloques de 30 min (ver SESSION_WARN_STEP_MIN) hasta SESSION_WARN_MAX_MIN -- la metodología
+// de barrido de estación trabaja en ventanas pico de 2h, así que esto es para que el auditor
+// note cuánto lleva sin tener que estar mirando el reloj y haciendo la cuenta él mismo. No cierra
+// ni detiene nada solo: la decisión de parar la sigue tomando el auditor.
+function formatearDuracionCaptura(ms) {
+    const minTotales = Math.floor(ms / 60000);
+    const horas = Math.floor(minTotales / 60);
+    const mins = minTotales % 60;
+    return { horas, mins, minTotales };
+}
+
+function actualizarContadorSesion() {
+    if (!session) {
+        sessionTimerEl.classList.add('hidden');
+        sessionTimerBannerEl.classList.add('hidden');
+        return;
+    }
+    sessionTimerEl.classList.remove('hidden');
+    const { horas, mins, minTotales } = formatearDuracionCaptura(ahoraSincronizado() - session.meta.startTime);
+    const milestone = Math.floor(minTotales / SESSION_WARN_STEP_MIN) * SESSION_WARN_STEP_MIN;
+
+    let clase = '';
+    if (milestone >= 120) clase = 'limite';
+    else if (milestone >= SESSION_WARN_STEP_MIN) clase = 'aviso';
+    sessionTimerEl.className = `session-timer ${clase}`.trim();
+    sessionTimerEl.textContent = `⏱ Tiempo de captura: ${horas}h ${String(mins).padStart(2, '0')}min`;
+
+    if (milestone >= SESSION_WARN_STEP_MIN && milestone <= SESSION_WARN_MAX_MIN) {
+        if (!session.meta.avisos) session.meta.avisos = []; // sesiones ya en curso antes de este cambio
+        if (!session.meta.avisos.includes(milestone)) {
+            session.meta.avisos.push(milestone);
+            guardarSesion(session);
+            const fuerte = milestone >= 120;
+            const texto = fuerte
+                ? `Llevas ${horas}h ${mins}min de captura — la ventana pico son 2h, considera cerrar la sesión.`
+                : `Llevas ${horas}h ${mins}min de captura.`;
+            sessionTimerBannerEl.textContent = texto;
+            sessionTimerBannerEl.classList.remove('hidden');
+            sessionTimerBannerEl.classList.toggle('fuerte', fuerte);
+        }
+    }
+}
+
+sessionTimerBannerEl.addEventListener('click', () => sessionTimerBannerEl.classList.add('hidden'));
+
+setInterval(actualizarContadorSesion, 1000);
 
 // Indicador de qué tan fresca está la última respuesta real del SIC -- independiente del reloj
 // de arriba, que solo calcula hora local y sigue "corriendo" aunque el polling lleve minutos
@@ -720,6 +774,7 @@ async function init() {
     } else {
         actualizarUIBotonSesion(false);
     }
+    actualizarContadorSesion();
     renderizarAuditoria();
     renderizarSesionesArchivadas();
 

@@ -90,6 +90,28 @@ html, body {
     font-size: 0.85rem;
 }
 
+.alert-banner.fuerte {
+    background: var(--no);
+    color: white;
+}
+
+.session-timer {
+    font-size: 0.85rem;
+    margin-top: 2px;
+    font-weight: 600;
+    opacity: 0.9;
+}
+
+.session-timer.aviso {
+    color: var(--warn);
+    opacity: 1;
+}
+
+.session-timer.limite {
+    color: var(--no);
+    opacity: 1;
+}
+
 .hidden { display: none !important; }
 
 .tabs {

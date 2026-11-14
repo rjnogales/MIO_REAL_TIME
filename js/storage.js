@@ -13,7 +13,8 @@ function iniciarSesion({ estacion, auditor }) {
             estacion,
             auditor,
             startTime: ahoraSincronizado(),
-            parte: 1 // número de entrega -- sube cada vez que se corta por el límite de filas (ver js/app.js)
+            parte: 1, // número de entrega -- sube cada vez que se corta por el límite de filas (ver js/app.js)
+            avisos: [] // hitos de 30 min ya mostrados en esta sesión (ver actualizarContadorSesion en app.js)
         },
         rows: [],
         caches: { historyCache: {}, approachingCache: {} }
