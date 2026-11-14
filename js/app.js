@@ -627,6 +627,10 @@ function construirFilaAuditoria(tipo) {
 
 btnMarcarHora.addEventListener('click', () => {
     if (!auditSeleccion || !session) return;
+    if (auditSeleccion.marcada.hora) {
+        const yaMarcada = auditSeleccion.marcada.hora.slice(11, 19);
+        if (!confirm(`Este bus ya tiene hora marcada (${yaMarcada}). ¿Marcar otra vez?`)) return;
+    }
     const fila = construirFilaAuditoria('AUDITORIA_HORA');
     fila.hora_llegada_auditor = fila.timestamp_captura;
     agregarFilasConLimite([fila]);
