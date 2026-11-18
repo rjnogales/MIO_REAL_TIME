@@ -7,14 +7,14 @@ Requerimientos y decisiones: [`../ACTAS/2026-11-05_requerimientos_app_auditoria_
 Es una PWA sin build (HTML/CSS/JS plano, sin dependencias ni paso de compilación). Para probarla hay que servirla por `http://` o `https://` (no abrir el `index.html` con doble clic / `file://`, porque el service worker y el `<dialog>` no funcionan bien así en todos los navegadores):
 
 ```
-cd CODE
+cd CODE_PWA
 npx serve .
 ```
 
 o con Python si está disponible:
 
 ```
-cd CODE
+cd CODE_PWA
 python -m http.server 8080
 ```
 
@@ -28,7 +28,7 @@ El catálogo de paradas (`https://www.utryt.com.co/.../paradas.json`) **no** se 
 ## Estructura de carpetas
 
 ```
-CODE/
+CODE_PWA/
   index.html              estructura de la app (dos pestañas, diálogo de inicio de sesión)
   manifest.webmanifest     metadatos PWA (nombre, orientación horizontal, ícono)
   sw.js                    service worker: solo cachea el shell estático, nunca los datos del SIC
