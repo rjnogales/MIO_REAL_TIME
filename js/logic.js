@@ -10,9 +10,12 @@
 //   arr[4] = destino (DestinationName)
 //   arr[5] = código corto de vehículo -> resolver con resolveVehicle() para el número físico (MC XXXXX)
 //   arr[6] = TripId -- no usado por el kiosco, confirmado en campo
-//   arr[7] = no usado por el kiosco -- probablemente PlannedDepartureTime (ReturnList lo pide)
-//   arr[8] = EstimatedTime en ms (confirmado explícitamente en comentario del código fuente)
-// arr[7] sigue siendo hipótesis (PlannedDepartureTime) -- arr[3] y arr[6] confirmados en campo 2026-11-11/12.
+//   arr[7] = EstimatedTime en ms (confirmado explícitamente en comentario del código fuente)
+// arr[3], arr[6] confirmados en campo 2026-11-11/12.
+// 2026-11-19: se dejó de pedir PlannedDepartureTime (no se usaba) -- por eso EstimatedTime corrió
+// de arr[8] a arr[7]. El orden de ReturnList NO determina el orden de la respuesta: el servidor
+// siempre devuelve los campos en su propio orden fijo (confirmado probando ReturnList en orden
+// invertido); lo que cambia el índice es solo CUÁLES campos se piden, no en qué orden se escriben.
 
 // A diferencia del kiosco, aquí NUNCA se descartan predicciones (ni por ETA nula ni por
 // vehículo sin resolver): el registro crudo de auditoría debe conservar todo.
@@ -22,7 +25,7 @@ function extraerPredicciones(messages) {
     for (const arr of messages) {
         if (!Array.isArray(arr)) continue;
         if (arr[0] === 1) {
-            const etaRaw = arr[8];
+            const etaRaw = arr[7];
             const eta = (etaRaw !== null && etaRaw !== undefined) ? parseInt(etaRaw, 10) : null;
             const vehiculo = resolveVehicle(arr[5]);
             const p = {
@@ -30,7 +33,6 @@ function extraerPredicciones(messages) {
                 destination: arr[4] ?? '---',
                 directionId: arr[3] ?? null,
                 tripId: arr[6] ?? null,
-                plannedDepartureRaw: arr[7] ?? null,
                 vehicleRaw: arr[5] ?? null,
                 vehicleMc: vehiculo.numero,
                 eta

@@ -371,8 +371,7 @@ function filaDesdeMensaje(m, now, gpsPorVehiculo, distanciaPorVehiculo) {
         fila.trip_id = m[6] ?? '';
         fila.vehicle_raw = m[5] ?? '';
         fila.vehicle_mc = vehiculo.numero ?? '';
-        fila.estimated_time = formatearEpochSiExiste(m[8]);
-        fila.planned_departure_raw = formatearEpochSiExiste(m[7]);
+        fila.estimated_time = formatearEpochSiExiste(m[7]);
         const minutosGps = gpsPorVehiculo ? gpsPorVehiculo[fila.vehicle_raw] : undefined;
         fila.eta_gps = (minutosGps !== undefined && minutosGps !== null) ? formatearTimestampLocal(now + minutosGps * 60000) : '';
         const metros = distanciaPorVehiculo ? distanciaPorVehiculo[fila.vehicle_raw] : undefined;

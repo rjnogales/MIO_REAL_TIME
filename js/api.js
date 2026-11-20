@@ -5,7 +5,7 @@
 // Ambas son públicas (alcanzables por internet normal, no requieren la red interna de Metrocali).
 
 const API_BASE = 'https://vdv-cali.utryt.com.co/interfaces/ura/instant_V2';
-const RETURN_LIST = 'StopPointName,LineName,DestinationName,EstimatedTime,VehicleId,PlannedDepartureTime,DirectionId,TripId,MessageText';
+const RETURN_LIST = 'StopPointName,LineName,DestinationName,EstimatedTime,VehicleId,DirectionId,TripId,MessageText';
 const PARADAS_URL = 'https://www.utryt.com.co/priuebas/SIC/assets/paradas.json';
 const PARADAS_CACHE_KEY = 'sic_paradas_cache_v1';
 
@@ -65,7 +65,7 @@ function haversineMetros(lat1, lon1, lat2, lon2) {
 }
 
 function buildStopUrl(stopId) {
-    return `${API_BASE}?StopId=${encodeURIComponent(stopId)}&ReturnList=${encodeURIComponent(RETURN_LIST)}`;
+    return `${API_BASE}?StopId=${encodeURIComponent(stopId)}&ReturnList=${encodeURIComponent(RETURN_LIST)}&Realtime=true`;
 }
 
 // Devuelve el texto crudo de la respuesta (una línea JSON-array por mensaje) ya separado en array de arrays.
